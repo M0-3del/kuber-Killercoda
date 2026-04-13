@@ -95,9 +95,16 @@ install_dashboard_if_missing() {
     return 0
   fi
 
+  log "Adding Kubernetes Dashboard Helm repo..."
+  helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/ --force-update
+
+  log "Current Helm repos:"
+  helm repo list
+
+  log "Updating Helm repos..."
+  helm repo update
+
   log "Installing Kubernetes Dashboard..."
-  helm repo add kubernetes-dashboard https://kubernetes.github.io/dashboard/ >/dev/null 2>&1 || true
-  helm repo update >/dev/null
   helm upgrade --install "${RELEASE_NAME}" kubernetes-dashboard/kubernetes-dashboard \
     --create-namespace --namespace "${NS}"
 
