@@ -277,12 +277,12 @@ wait_for_dashboard_ready() {
 
   for _ in $(seq 1 "${WAIT_SECONDS}"); do
     if kubectl -n "${NS}" wait --for=condition=Ready pod -l k8s-app=kubernetes-dashboard --timeout=10s >/dev/null 2>&1; then
-      log "Dashboard pod is Ready."
+      log "Dashboard pod is Ready via label k8s-app=kubernetes-dashboard"
       return 0
     fi
 
     if kubectl -n "${NS}" wait --for=condition=Ready pod -l app.kubernetes.io/name=kubernetes-dashboard --timeout=10s >/dev/null 2>&1; then
-      log "Dashboard pod is Ready."
+      log "Dashboard pod is Ready via label app.kubernetes.io/name=kubernetes-dashboard"
       return 0
     fi
 
