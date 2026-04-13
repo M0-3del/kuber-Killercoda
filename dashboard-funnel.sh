@@ -7,6 +7,7 @@ LOCAL_PORT="${LOCAL_PORT:-8443}"
 HTTPS_PORT="${HTTPS_PORT:-443}"
 PF_LOG="${PF_LOG:-/tmp/kdash-portforward.log}"
 PF_PID="${PF_PID:-/tmp/kdash-portforward.pid}"
+TS_AUTHKEY="${TS_AUTHKEY:-}"
 
 log() {
   printf "\n[%s] %s\n" "$(date +'%F %T')" "$*"
@@ -17,6 +18,39 @@ need_cmd() {
     echo "Missing command: $1" >&2
     exit 1
   }
+}
+
+sudo_cmd() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+install_tailscale_if_missing() {
+  if command -v tailscale >/dev/null 2>&1; then
+    log "tailscale already installed: $(tailscale version 2>/dev/null || true)"
+    return 0
+  fi
+
+  log "tailscale not found, installing..."
+  curl -fsSL https://tailscale.com/install.sh | sudo_cmd sh
+}
+
+connect_tailscale_if_needed() {
+  if tailscale status >/dev/null 2>&1; then
+    log "tailscale already connected."
+    return 0
+  fi
+
+  if [[ -z "${TS_AUTHKEY}" ]]; then
+    echo "Tailscale is not connected. Set TS_AUTHKEY first." >&2
+    exit 1
+  fi
+
+  log "Connecting to tailscale..."
+  sudo_cmd tailscale up --auth-key="${TS_AUTHKEY}"
 }
 
 check_local_backend() {
@@ -47,10 +81,10 @@ start_port_forward() {
 
 start_funnel() {
   log "Resetting old funnel config on https port ${HTTPS_PORT}"
-  sudo tailscale funnel --https="${HTTPS_PORT}" off >/dev/null 2>&1 || true
+  sudo_cmd tailscale funnel --https="${HTTPS_PORT}" off >/dev/null 2>&1 || true
 
   log "Starting Funnel in background -> https+insecure://127.0.0.1:${LOCAL_PORT}"
-  sudo tailscale funnel --bg --https="${HTTPS_PORT}" "https+insecure://127.0.0.1:${LOCAL_PORT}"
+  sudo_cmd tailscale funnel --bg --https="${HTTPS_PORT}" "https+insecure://127.0.0.1:${LOCAL_PORT}"
 }
 
 show_status() {
@@ -64,7 +98,7 @@ show_status() {
 
   echo
   echo "===== Funnel status ====="
-  sudo tailscale funnel status || true
+  sudo_cmd tailscale funnel status || true
 
   echo
   echo "===== Port-forward PID ====="
@@ -81,7 +115,7 @@ show_status() {
 
 stop_all() {
   log "Stopping Funnel"
-  sudo tailscale funnel --https="${HTTPS_PORT}" off >/dev/null 2>&1 || true
+  sudo_cmd tailscale funnel --https="${HTTPS_PORT}" off >/dev/null 2>&1 || true
 
   log "Stopping port-forward"
   if [[ -f "${PF_PID}" ]]; then
@@ -96,7 +130,9 @@ stop_all() {
 start_all() {
   need_cmd kubectl
   need_cmd curl
-  need_cmd tailscale
+
+  install_tailscale_if_missing
+  connect_tailscale_if_needed
 
   start_port_forward
   start_funnel
