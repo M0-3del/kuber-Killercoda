@@ -272,6 +272,28 @@ stop_all() {
   log "Done"
 }
 
+wait_for_dashboard_ready() {
+  log "Waiting for dashboard pods to become Ready..."
+
+  for _ in $(seq 1 "${WAIT_SECONDS}"); do
+    if kubectl -n "${NS}" wait --for=condition=Ready pod -l k8s-app=kubernetes-dashboard --timeout=10s >/dev/null 2>&1; then
+      log "Dashboard pod is Ready."
+      return 0
+    fi
+
+    if kubectl -n "${NS}" wait --for=condition=Ready pod -l app.kubernetes.io/name=kubernetes-dashboard --timeout=10s >/dev/null 2>&1; then
+      log "Dashboard pod is Ready."
+      return 0
+    fi
+
+    sleep 2
+  done
+
+  kubectl -n "${NS}" get pods -o wide || true
+  kubectl -n "${NS}" get events --sort-by=.lastTimestamp | tail -n 40 || true
+  fail "Dashboard pods did not become Ready in time."
+}
+
 start_all() {
   install_base_deps
   install_tailscale_if_missing
@@ -279,6 +301,7 @@ start_all() {
   install_helm_if_missing
   install_dashboard_if_missing
   create_admin_user_if_missing
+  wait_for_dashboard_ready
   start_port_forward
   start_funnel
   show_status
